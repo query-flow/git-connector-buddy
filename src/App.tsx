@@ -9,6 +9,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Chat from "./pages/Chat";
 import Admin from "./pages/Admin";
+import Conversations from "./pages/Conversations";
+import Documents from "./pages/Documents";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +39,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/conversations"
+              element={
+                <ProtectedRoute>
+                  <Conversations />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/documents"
+              element={
+                <ProtectedRoute>
+                  <Documents />
                 </ProtectedRoute>
               }
             />
