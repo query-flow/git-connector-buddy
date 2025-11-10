@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { MessageBubble } from '@/components/MessageBubble';
 import { Sidebar } from '@/components/Sidebar';
-import { Send, Zap } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Send, Zap, Save, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -28,8 +30,75 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showWarning, setShowWarning] = useState(true);
   const { accessToken, userName, orgName } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (messages.length > 0 && showWarning) {
+      const timer = setTimeout(() => setShowWarning(false), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length, showWarning]);
+
+  const handleSaveConversation = async () => {
+    if (messages.length === 0) return;
+
+    setSaving(true);
+    try {
+      // Create a new conversation
+      const createResponse = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          title: messages[0]?.content.substring(0, 50) || 'Nova Conversa',
+        }),
+      });
+
+      if (!createResponse.ok) throw new Error('Failed to create conversation');
+
+      const { conversation_id } = await createResponse.json();
+
+      // Save each message to the conversation
+      for (const message of messages) {
+        await fetch(`/api/conversations/${conversation_id}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            role: message.role,
+            content: message.content,
+            sql: message.sql,
+            table_data: message.table,
+            insights: message.insights,
+          }),
+        });
+      }
+
+      toast({
+        title: 'Conversa salva!',
+        description: 'Sua conversa foi salva com sucesso',
+      });
+
+      // Navigate to the saved conversation
+      navigate(`/conversations/${conversation_id}`);
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar a conversa',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,13 +169,35 @@ export default function Chat() {
               Quick Mode
             </div>
           </div>
-          <div className="text-sm text-muted-foreground">
-            {userName || 'User'}
+          <div className="flex items-center gap-4">
+            {messages.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveConversation}
+                disabled={saving}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saving ? 'Salvando...' : 'Salvar Conversa'}
+              </Button>
+            )}
+            <div className="text-sm text-muted-foreground">
+              {userName || 'User'}
+            </div>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-3xl mx-auto space-y-6">
+            {messages.length > 0 && showWarning && (
+              <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
+                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertDescription className="text-amber-800 dark:text-amber-200">
+                  <strong>Atenção:</strong> No Quick Mode, suas conversas não são salvas automaticamente. 
+                  Use o botão "Salvar Conversa" no topo para preservar este histórico.
+                </AlertDescription>
+              </Alert>
+            )}
             {messages.length === 0 ? (
               <div className="text-center py-12">
                 <h2 className="text-2xl font-semibold mb-2">Ask anything about your data</h2>
