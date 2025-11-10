@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isAuthenticated: !!localStorage.getItem('access_token'),
   });
 
-  const fetchUserDetails = async (accessToken: string) => {
+  const fetchUserDetails = async (accessToken: string, userId: string) => {
     try {
       const response = await fetch('/api/members', {
         headers: {
@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (response.ok) {
         const data = await response.json();
-        const currentUser = data.members.find((m: any) => m.user_id === authState.userId);
+        const currentUser = data.members.find((m: any) => m.user_id === userId);
         
         if (currentUser) {
           localStorage.setItem('user_name', currentUser.name);
@@ -79,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthenticated: true,
     }));
 
-    await fetchUserDetails(tokens.access_token);
+    await fetchUserDetails(tokens.access_token, tokens.user_id);
   };
 
   const logout = () => {
