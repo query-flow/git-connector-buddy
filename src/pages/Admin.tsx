@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { UserPlus, Trash2, Shield, User, Database, Check, X } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User, Database } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sidebar } from '@/components/Sidebar';
+import DatabaseConfigWizard from '@/components/DatabaseConfigWizard';
 
 interface Member {
   user_id: string;
@@ -33,21 +34,10 @@ export default function Admin() {
     role_in_org: 'member' as 'admin' | 'member',
   });
   const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [dbConfig, setDbConfig] = useState({
-    db_host: '',
-    db_port: '3306',
-    db_name: '',
-    db_user: '',
-    db_password: '',
-    allowed_schemas: '',
-  });
   const [dbLoading, setDbLoading] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     fetchMembers();
-    fetchDbConfig();
   }, []);
 
   const fetchMembers = async () => {
@@ -73,84 +63,14 @@ export default function Admin() {
     }
   };
 
-  const fetchDbConfig = async () => {
-    try {
-      const response = await fetch('/api/org/db-connection', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setDbConfig({
-          db_host: data.host || '',
-          db_port: String(data.port || '3306'),
-          db_name: data.database_name || '',
-          db_user: data.username || '',
-          db_password: '', // Don't show password
-          allowed_schemas: data.allowed_schemas?.join(', ') || '',
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load database config:', error);
-    }
-  };
-
-  const handleDbConfigChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDbConfig(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    setConnectionStatus('idle');
-  };
-
-  const testConnection = async () => {
-    setTestingConnection(true);
-    setConnectionStatus('idle');
-
-    try {
-      const response = await fetch('/api/org/test-connection', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          host: dbConfig.db_host,
-          port: parseInt(dbConfig.db_port),
-          database_name: dbConfig.db_name,
-          username: dbConfig.db_user,
-          password: dbConfig.db_password || undefined,
-        }),
-      });
-
-      if (response.ok) {
-        setConnectionStatus('success');
-        toast({
-          title: 'Connection successful',
-          description: 'Database connection is working',
-        });
-      } else {
-        setConnectionStatus('error');
-        const data = await response.json();
-        toast({
-          title: 'Connection failed',
-          description: data.detail || 'Could not connect to database',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      setConnectionStatus('error');
-      toast({
-        title: 'Connection failed',
-        description: 'Could not connect to database',
-        variant: 'destructive',
-      });
-    } finally {
-      setTestingConnection(false);
-    }
-  };
-
-  const handleUpdateDbConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateDbConfig = async (config: {
+    db_host: string;
+    db_port: number;
+    db_name: string;
+    db_user: string;
+    db_password: string;
+    allowed_schemas: string[];
+  }) => {
     setDbLoading(true);
 
     try {
@@ -161,12 +81,12 @@ export default function Admin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          host: dbConfig.db_host,
-          port: parseInt(dbConfig.db_port),
-          database_name: dbConfig.db_name,
-          username: dbConfig.db_user,
-          password: dbConfig.db_password || undefined,
-          allowed_schemas: dbConfig.allowed_schemas.split(',').map(s => s.trim()).filter(Boolean),
+          host: config.db_host,
+          port: config.db_port,
+          database_name: config.db_name,
+          username: config.db_user,
+          password: config.db_password,
+          allowed_schemas: config.allowed_schemas,
         }),
       });
 
@@ -175,7 +95,6 @@ export default function Admin() {
           title: 'Database configuration updated',
           description: 'Your database connection has been updated successfully',
         });
-        fetchDbConfig();
       } else {
         const data = await response.json();
         toast({
@@ -506,116 +425,14 @@ export default function Admin() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleUpdateDbConfig} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="db_host">Host</Label>
-                        <Input
-                          id="db_host"
-                          name="db_host"
-                          placeholder="localhost"
-                          value={dbConfig.db_host}
-                          onChange={handleDbConfigChange}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="db_port">Port</Label>
-                        <Input
-                          id="db_port"
-                          name="db_port"
-                          type="number"
-                          placeholder="3306"
-                          value={dbConfig.db_port}
-                          onChange={handleDbConfigChange}
-                          required
-                        />
-                      </div>
+                  {dbLoading ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      <p className="mt-4 text-sm text-muted-foreground">Updating database configuration...</p>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="db_name">Database Name</Label>
-                      <Input
-                        id="db_name"
-                        name="db_name"
-                        placeholder="mydatabase"
-                        value={dbConfig.db_name}
-                        onChange={handleDbConfigChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="db_user">Database User</Label>
-                        <Input
-                          id="db_user"
-                          name="db_user"
-                          placeholder="root"
-                          value={dbConfig.db_user}
-                          onChange={handleDbConfigChange}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="db_password">Database Password</Label>
-                        <Input
-                          id="db_password"
-                          name="db_password"
-                          type="password"
-                          placeholder="Leave empty to keep current"
-                          value={dbConfig.db_password}
-                          onChange={handleDbConfigChange}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Leave empty to keep the current password
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="allowed_schemas">Allowed Schemas</Label>
-                      <Input
-                        id="allowed_schemas"
-                        name="allowed_schemas"
-                        placeholder="public, sales, analytics"
-                        value={dbConfig.allowed_schemas}
-                        onChange={handleDbConfigChange}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Comma-separated schema names that can be queried
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3 pt-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={testConnection}
-                        disabled={testingConnection}
-                      >
-                        {testingConnection ? 'Testing...' : 'Test Connection'}
-                      </Button>
-                      {connectionStatus === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-green-600">
-                          <Check className="h-4 w-4" />
-                          <span>Connection successful</span>
-                        </div>
-                      )}
-                      {connectionStatus === 'error' && (
-                        <div className="flex items-center gap-2 text-sm text-destructive">
-                          <X className="h-4 w-4" />
-                          <span>Connection failed</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end pt-4 border-t">
-                      <Button type="submit" disabled={dbLoading}>
-                        {dbLoading ? 'Updating...' : 'Update Configuration'}
-                      </Button>
-                    </div>
-                  </form>
+                  ) : (
+                    <DatabaseConfigWizard onComplete={handleUpdateDbConfig} />
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
