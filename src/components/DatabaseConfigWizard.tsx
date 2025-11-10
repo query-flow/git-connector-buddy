@@ -3,12 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CheckCircle2, XCircle, Database, Server, Table } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Database, Server } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2;
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';
 
 interface ConnectionData {
@@ -41,8 +40,6 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [databases, setDatabases] = useState<string[]>([]);
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
-  const [schemas, setSchemas] = useState<string[]>([]);
-  const [selectedSchemas, setSelectedSchemas] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -118,45 +115,6 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
     }
   };
 
-  const handleNextToStep3 = async () => {
-    setLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch('/api/database/list-schemas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...connectionData,
-          database_name: selectedDatabase
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSchemas(data.schemas);
-        setStep(3);
-      } else {
-        setErrorMessage('Failed to list schemas');
-        toast({
-          title: 'Error',
-          description: 'Could not list schemas',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      setErrorMessage('Error listing schemas');
-      toast({
-        title: 'Error',
-        description: 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleComplete = () => {
     const config = {
       db_host: connectionData.host,
@@ -164,7 +122,8 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
       db_name: selectedDatabase!,
       db_user: connectionData.username,
       db_password: connectionData.password,
-      allowed_schemas: selectedSchemas
+      // In MySQL, "schema" = "database". The allowed_schemas should contain database names, not table names!
+      allowed_schemas: [selectedDatabase!]  // Use the selected database, not the individual tables
     };
 
     onComplete(config);
@@ -172,15 +131,14 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
 
   const getStepIcon = (stepNumber: number) => {
     if (stepNumber === 1) return <Server className="h-5 w-5" />;
-    if (stepNumber === 2) return <Database className="h-5 w-5" />;
-    return <Table className="h-5 w-5" />;
+    return <Database className="h-5 w-5" />;
   };
 
   return (
     <div className="space-y-6">
       {/* Progress Indicator */}
       <div className="flex items-center justify-between mb-6">
-        {[1, 2, 3].map((s) => (
+        {[1, 2].map((s) => (
           <div key={s} className="flex items-center">
             <div
               className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
@@ -193,9 +151,9 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
             >
               {s < step ? '✓' : s}
             </div>
-            {s < 3 && (
+            {s < 2 && (
               <div
-                className={`w-16 h-0.5 ${
+                className={`w-24 h-0.5 ${
                   s < step ? 'bg-primary' : 'bg-muted'
                 }`}
               />
@@ -209,9 +167,8 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {getStepIcon(step)}
           <span>
-            {step === 1 && 'Step 1 of 3: Connect to MySQL Server'}
-            {step === 2 && 'Step 2 of 3: Choose Database'}
-            {step === 3 && 'Step 3 of 3: Select Tables'}
+            {step === 1 && 'Step 1 of 2: Connect to MySQL Server'}
+            {step === 2 && 'Step 2 of 2: Choose Database'}
           </span>
         </div>
 
@@ -330,82 +287,10 @@ export default function DatabaseConfigWizard({ onComplete }: DatabaseConfigWizar
                 ← Back
               </Button>
               <Button
-                onClick={handleNextToStep3}
+                onClick={handleComplete}
                 disabled={!selectedDatabase || loading}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Next: Select Tables →
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">
-                Which tables can the system access?
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Database: <strong>{selectedDatabase}</strong>
-              </p>
-            </div>
-
-            {schemas.length > 0 ? (
-              <>
-                <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3">
-                  {schemas.map((schema) => (
-                    <div key={schema} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={schema}
-                        checked={selectedSchemas.includes(schema)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedSchemas([...selectedSchemas, schema]);
-                          } else {
-                            setSelectedSchemas(selectedSchemas.filter(s => s !== schema));
-                          }
-                        }}
-                      />
-                      <Label htmlFor={schema} className="flex-1 cursor-pointer">
-                        {schema}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedSchemas(schemas)}
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedSchemas([])}
-                  >
-                    Deselect All
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                Loading tables...
-              </div>
-            )}
-
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(2)}>
-                ← Back
-              </Button>
-              <Button
-                onClick={handleComplete}
-                disabled={selectedSchemas.length === 0}
-              >
                 Complete Configuration ✓
               </Button>
             </div>
