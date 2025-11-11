@@ -7,7 +7,7 @@ import { MessageBubble } from '@/components/MessageBubble';
 import { Sidebar } from '@/components/Sidebar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Send, Zap, Save, AlertCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,16 +32,62 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showWarning, setShowWarning] = useState(true);
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
   const { accessToken, userName, orgName } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { conversationId } = useParams<{ conversationId?: string }>();
+
+  // Load conversation history if conversationId is provided
+  useEffect(() => {
+    if (conversationId) {
+      loadConversation(conversationId);
+    }
+  }, [conversationId]);
 
   useEffect(() => {
-    if (messages.length > 0 && showWarning) {
+    if (messages.length > 0 && showWarning && !conversationId) {
       const timer = setTimeout(() => setShowWarning(false), 10000);
       return () => clearTimeout(timer);
     }
-  }, [messages.length, showWarning]);
+  }, [messages.length, showWarning, conversationId]);
+
+  const loadConversation = async (id: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/conversations/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setConversationTitle(data.conversation.title);
+        // Map backend message format to frontend format
+        const loadedMessages: Message[] = data.messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content,
+          sql: msg.sql_executed,
+          table: msg.table_data,
+          insights: msg.insights,
+        }));
+        setMessages(loadedMessages);
+      } else {
+        throw new Error(data.detail || 'Failed to load conversation');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to load conversation',
+        variant: 'destructive',
+      });
+      navigate('/chat'); // Redirect to quick mode on error
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSaveConversation = async () => {
     if (messages.length === 0) return;
@@ -110,7 +156,12 @@ export default function Chat() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/perguntar_org', {
+      // Use different endpoints for saved conversations vs quick mode
+      const endpoint = conversationId
+        ? `/api/conversations/${conversationId}/ask`
+        : '/api/perguntar_org';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,14 +214,16 @@ export default function Chat() {
       <div className="flex-1 flex flex-col">
         <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-card">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold">{orgName || 'QueryFlow'}</h1>
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent text-xs font-medium">
-              <Zap className="h-3 w-3" />
-              Quick Mode
-            </div>
+            <h1 className="text-lg font-semibold">{conversationTitle || orgName || 'QueryFlow'}</h1>
+            {!conversationId && (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent text-xs font-medium">
+                <Zap className="h-3 w-3" />
+                Quick Mode
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
-            {messages.length > 0 && (
+            {messages.length > 0 && !conversationId && (
               <Button
                 variant="outline"
                 size="sm"
@@ -189,11 +242,11 @@ export default function Chat() {
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-3xl mx-auto space-y-6">
-            {messages.length > 0 && showWarning && (
+            {messages.length > 0 && showWarning && !conversationId && (
               <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
                 <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 <AlertDescription className="text-amber-800 dark:text-amber-200">
-                  <strong>Atenção:</strong> No Quick Mode, suas conversas não são salvas automaticamente. 
+                  <strong>Atenção:</strong> No Quick Mode, suas conversas não são salvas automaticamente.
                   Use o botão "Salvar Conversa" no topo para preservar este histórico.
                 </AlertDescription>
               </Alert>
