@@ -1,5 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/DataTable';
+import { ChartRenderer } from '@/components/charts/ChartRenderer';
+import { ChartData } from '@/types/charts';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
@@ -11,10 +13,7 @@ interface MessageBubbleProps {
   };
   insights?: {
     summary: string;
-    chart?: {
-      mime: string;
-      base64: string;
-    };
+    chart?: ChartData;
   };
 }
 
@@ -46,11 +45,7 @@ export const MessageBubble = ({ role, content, sql, table, insights }: MessageBu
         )}
         
         {insights?.chart && (
-          <img
-            src={`data:${insights.chart.mime};base64,${insights.chart.base64}`}
-            alt="Insights chart"
-            className="rounded-lg max-w-full"
-          />
+          <ChartRenderer spec={insights.chart} />
         )}
       </Card>
     </div>
