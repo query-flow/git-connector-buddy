@@ -262,8 +262,8 @@ export default function Chat() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 bg-muted/20">
+          <div className="max-w-5xl mx-auto space-y-2">
             {messages.length > 0 && showWarning && !conversationId && (
               <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
                 <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -280,19 +280,21 @@ export default function Chat() {
                 isLoading={loadingSuggestions}
               />
             ) : (
-              <>
+              <div className="space-y-1">
                 {messages.map((message, index) => (
-                  <div key={index}>
+                  <div key={index} className="w-full">
                     <MessageBubble {...message} />
                     {message.role === 'assistant' && message.suggestedQuestions && (
-                      <FollowUpPanel
-                        suggestions={message.suggestedQuestions}
-                        onAsk={handleAskQuestion}
-                      />
+                      <div className="mb-6">
+                        <FollowUpPanel
+                          suggestions={message.suggestedQuestions}
+                          onAsk={handleAskQuestion}
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
-              </>
+              </div>
             )}
             {loading && (
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -303,8 +305,8 @@ export default function Chat() {
           </div>
         </div>
 
-        <div className="border-t border-border bg-card p-4">
-          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+        <div className="border-t border-border bg-card p-6 shadow-sm">
+          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
             <div className="flex gap-2">
               <Textarea
                 value={input}
