@@ -8,6 +8,9 @@ import { Sidebar } from '@/components/Sidebar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Send, Zap, Save, AlertCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useSuggestions } from '@/hooks/useSuggestions';
+import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
+import { FollowUpPanel } from '@/components/chat/FollowUpPanel';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -24,6 +27,7 @@ interface Message {
       base64: string;
     };
   };
+  suggestedQuestions?: string[];
 }
 
 export default function Chat() {
@@ -37,6 +41,12 @@ export default function Chat() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId?: string }>();
+  
+  // Buscar sugestões
+  const { data: suggestions, isLoading: loadingSuggestions } = useSuggestions({
+    enabled: messages.length === 0 && !conversationId,
+    accessToken,
+  });
 
   // Load conversation history if conversationId is provided
   useEffect(() => {
@@ -146,6 +156,17 @@ export default function Chat() {
     }
   };
 
+  const handleAskQuestion = (question: string) => {
+    setInput(question);
+    // Trigger submit automaticamente
+    setTimeout(() => {
+      const form = document.querySelector('form');
+      if (form) {
+        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    }, 100);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -184,6 +205,7 @@ export default function Chat() {
             sql: data.sql,
             table: data.columns && data.rows ? { columns: data.columns, rows: data.rows } : undefined,
             insights: data.insights,
+            suggestedQuestions: data.suggested_questions,
           };
           setMessages(prev => [...prev, assistantMessage]);
         } else if (data.status === 'schema_error') {
@@ -252,16 +274,25 @@ export default function Chat() {
               </Alert>
             )}
             {messages.length === 0 ? (
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-semibold mb-2">Ask anything about your data</h2>
-                <p className="text-muted-foreground">
-                  Type your question in natural language below
-                </p>
-              </div>
+              <ChatEmptyState
+                suggestions={suggestions}
+                onAsk={handleAskQuestion}
+                isLoading={loadingSuggestions}
+              />
             ) : (
-              messages.map((message, index) => (
-                <MessageBubble key={index} {...message} />
-              ))
+              <>
+                {messages.map((message, index) => (
+                  <div key={index}>
+                    <MessageBubble {...message} />
+                    {message.role === 'assistant' && message.suggestedQuestions && (
+                      <FollowUpPanel
+                        suggestions={message.suggestedQuestions}
+                        onAsk={handleAskQuestion}
+                      />
+                    )}
+                  </div>
+                ))}
+              </>
             )}
             {loading && (
               <div className="flex items-center gap-2 text-muted-foreground">
