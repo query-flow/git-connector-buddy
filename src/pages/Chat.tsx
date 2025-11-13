@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSuggestions } from '@/hooks/useSuggestions';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { FollowUpPanel } from '@/components/chat/FollowUpPanel';
+import { LoadingStages } from '@/components/LoadingStages';
+import { useQueryStream } from '@/hooks/useQueryStream';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -37,16 +39,70 @@ export default function Chat() {
   const [saving, setSaving] = useState(false);
   const [showWarning, setShowWarning] = useState(true);
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState('');
+  const [useStreaming, setUseStreaming] = useState(true); // Controla se usa SSE
   const { accessToken, userName, orgName } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId?: string }>();
-  
+
   // Buscar sugestões
   const { data: suggestions, isLoading: loadingSuggestions } = useSuggestions({
     enabled: messages.length === 0 && !conversationId,
     accessToken,
   });
+
+  // Memoize callbacks to prevent unnecessary re-renders
+  const handleStreamComplete = useCallback((result: any) => {
+    console.log('[Chat] Stream completed', { result, hasResult: !!result, status: result?.status });
+    if (result && result.status === 'success') {
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: result.insights?.summary || 'Query executed successfully',
+        sql: result.sql,
+        table: result.columns && result.rows ? { columns: result.columns, rows: result.rows } : undefined,
+        insights: result.insights,
+        suggestedQuestions: result.metadata?.suggested_questions,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }
+    console.log('[Chat] Cleaning up - setting currentQuestion to empty and loading to false');
+    setCurrentQuestion('');
+    setLoading(false);
+  }, []);
+
+  const handleStreamError = useCallback((error: string) => {
+    toast({
+      title: 'Error',
+      description: error,
+      variant: 'destructive',
+    });
+    setCurrentQuestion('');
+    setLoading(false);
+  }, [toast]);
+
+  // Hook de streaming SSE (apenas para quick mode)
+  const streamState = useQueryStream(
+    currentQuestion,
+    accessToken || '',
+    100,
+    true,
+    {
+      enabled: useStreaming && !!currentQuestion && !conversationId,
+      onComplete: handleStreamComplete,
+      onError: handleStreamError,
+    }
+  );
+
+  // Debug: Monitor loading state changes
+  useEffect(() => {
+    console.log('[Chat] Loading state changed:', loading);
+  }, [loading]);
+
+  // Debug: Monitor currentQuestion changes
+  useEffect(() => {
+    console.log('[Chat] currentQuestion changed:', currentQuestion);
+  }, [currentQuestion]);
 
   // Load conversation history if conversationId is provided
   useEffect(() => {
@@ -73,16 +129,22 @@ export default function Chat() {
 
       const data = await response.json();
 
+      console.log('[Chat] Loaded conversation data:', data);
+
       if (response.ok) {
         setConversationTitle(data.conversation.title);
         // Map backend message format to frontend format
-        const loadedMessages: Message[] = data.messages.map((msg: any) => ({
-          role: msg.role,
-          content: msg.content,
-          sql: msg.sql_executed,
-          table: msg.table_data,
-          insights: msg.insights,
-        }));
+        const loadedMessages: Message[] = data.messages.map((msg: any) => {
+          console.log('[Chat] Mapping message:', msg);
+          return {
+            role: msg.role,
+            content: msg.content,
+            sql: msg.sql_executed,
+            table: msg.table_data,
+            insights: msg.insights,
+          };
+        });
+        console.log('[Chat] Loaded messages:', loadedMessages);
         setMessages(loadedMessages);
       } else {
         throw new Error(data.detail || 'Failed to load conversation');
@@ -102,9 +164,11 @@ export default function Chat() {
   const handleSaveConversation = async () => {
     if (messages.length === 0) return;
 
+    console.log('[Chat] Saving conversation with messages:', messages);
     setSaving(true);
     try {
       // Create a new conversation
+      console.log('[Chat] Creating conversation...');
       const createResponse = await fetch('/api/conversations', {
         method: 'POST',
         headers: {
@@ -116,13 +180,22 @@ export default function Chat() {
         }),
       });
 
-      if (!createResponse.ok) throw new Error('Failed to create conversation');
+      console.log('[Chat] Create conversation response:', createResponse.status, createResponse.statusText);
 
-      const { conversation_id } = await createResponse.json();
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        console.error('[Chat] Create conversation error:', errorData);
+        throw new Error(errorData.detail || 'Failed to create conversation');
+      }
+
+      const responseData = await createResponse.json();
+      const conversationId = responseData.id; // Back-end retorna "id", não "conversation_id"
+      console.log('[Chat] Created conversation:', conversationId, 'Full response:', responseData);
 
       // Save each message to the conversation
       for (const message of messages) {
-        await fetch(`/api/conversations/${conversation_id}/messages`, {
+        console.log('[Chat] Saving message:', message);
+        const messageResponse = await fetch(`/api/conversations/${conversationId}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -136,6 +209,13 @@ export default function Chat() {
             insights: message.insights,
           }),
         });
+
+        console.log('[Chat] Message save response:', messageResponse.status, messageResponse.statusText);
+
+        if (!messageResponse.ok) {
+          const errorData = await messageResponse.json();
+          console.error('[Chat] Message save error:', errorData);
+        }
       }
 
       toast({
@@ -144,7 +224,8 @@ export default function Chat() {
       });
 
       // Navigate to the saved conversation
-      navigate(`/conversations/${conversation_id}`);
+      console.log('[Chat] Navigating to conversation:', conversationId);
+      navigate(`/chat/${conversationId}`);
     } catch (error) {
       toast({
         title: 'Erro ao salvar',
@@ -172,10 +253,20 @@ export default function Chat() {
     if (!input.trim() || loading) return;
 
     const userMessage: Message = { role: 'user', content: input };
+    const question = input;
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    console.log('[Chat] Starting query, setting loading=true');
     setLoading(true);
 
+    // Se estiver em Quick Mode (sem conversationId) e streaming habilitado, usa SSE
+    if (!conversationId && useStreaming) {
+      console.log('[Chat] Using SSE streaming, setting currentQuestion:', question);
+      setCurrentQuestion(question);
+      return; // O hook useQueryStream vai cuidar do resto
+    }
+
+    // Fallback: modo síncrono (para conversas salvas ou se streaming desabilitado)
     try {
       // Use different endpoints for saved conversations vs quick mode
       const endpoint = conversationId
@@ -297,10 +388,12 @@ export default function Chat() {
               </div>
             )}
             {loading && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-                Processing your question...
-              </div>
+              <LoadingStages
+                currentStage={streamState.currentStage}
+                progress={streamState.progress}
+                message={streamState.message}
+                error={streamState.error || undefined}
+              />
             )}
           </div>
         </div>

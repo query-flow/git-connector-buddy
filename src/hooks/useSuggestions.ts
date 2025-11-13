@@ -13,7 +13,7 @@ export function useSuggestions(options: UseSuggestionsOptions = {}) {
   const {
     schema,
     includePersonalized = true,
-    includeOrgPopular = true,
+    includeOrgPopular = false,
     enabled = true,
     accessToken,
   } = options;
@@ -24,7 +24,7 @@ export function useSuggestions(options: UseSuggestionsOptions = {}) {
       const params = new URLSearchParams();
       if (schema) params.append('schema', schema);
       params.append('include_personalized', String(includePersonalized));
-      params.append('include_org_popular', String(includeOrgPopular));
+      params.append('include_org_popular', 'false');
 
       const response = await fetch(`/api/suggestions?${params}`, {
         headers: {

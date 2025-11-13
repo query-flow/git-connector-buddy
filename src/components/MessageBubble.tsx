@@ -18,6 +18,8 @@ interface MessageBubbleProps {
 }
 
 export const MessageBubble = ({ role, content, sql, table, insights }: MessageBubbleProps) => {
+  console.log('[MessageBubble] Rendering:', { role, content, hasTable: !!table, hasSql: !!sql, hasInsights: !!insights, table, insights });
+
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4 animate-in slide-in-from-right duration-300">

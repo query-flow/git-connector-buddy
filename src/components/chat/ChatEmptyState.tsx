@@ -1,4 +1,4 @@
-import { History, Sparkles, Users } from 'lucide-react';
+import { History, Sparkles } from 'lucide-react';
 import { SuggestionsResponse } from '@/types/suggestions';
 import { SuggestionChip } from './SuggestionChip';
 
@@ -61,30 +61,6 @@ export function ChatEmptyState({ suggestions, onAsk, isLoading }: ChatEmptyState
                 key={q}
                 question={q}
                 onClick={() => onAsk(q)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Seção: Outros usuários perguntam */}
-      {suggestions?.popular && suggestions.popular.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-primary" />
-            <h3 className="font-medium">Outros usuários perguntam</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {suggestions.popular.map((s) => (
-              <SuggestionChip
-                key={s.question}
-                question={s.question}
-                badge={
-                  s.metadata.user_count
-                    ? `${s.metadata.user_count} ${s.metadata.user_count === 1 ? 'pessoa' : 'pessoas'}`
-                    : undefined
-                }
-                onClick={() => onAsk(s.question)}
               />
             ))}
           </div>
